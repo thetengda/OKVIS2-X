@@ -455,6 +455,24 @@ bool ThreadedSlam::processFrame() {
   kinematics::Transformation T_WS;
   SpeedAndBias speedAndBias;
 
+  // Processing steps:
+  // 0. cache image and imu data
+  // 1. new state initializsation
+  //  1.a initial pose from IMU
+  //  1.b state propagation, and cache gps, lidar, depth data if lastOptimisedState_.id.isInitialised()
+  // 2. keypoint detectAndDescribe
+  // 3. wait for optimiser to finish
+  // 4. addStates, addSubmapAlignmentConstraints(lidar/depth map to frame factors) to estimator
+  // 5. new lidar keyframe?
+  // 6. dataAssociationAndInitialization and setKeyframe
+  // 7. addGpsMeasurementsOnAllGraphs
+  // 8. addSubmapAlignmentConstraints (map to map alignment factors)
+  // 9. optimisePublishMarginalise
+  // 10. optimiseFullGraph if loop closure
+
+
+  /////////////// waiting stream of measurements ///////////////
+
   bool ranDetection = false;
   if(firstFrame_) {
     // in the very beginning, we need to wait for the IMU
@@ -533,6 +551,11 @@ bool ThreadedSlam::processFrame() {
       }
     }
   }
+
+  ///////////////// new state initialisation /////////////////
+  // 1.a first initialisation: initial pose from IMU, detectAndDescribe for initialisation
+  // 1.b state propagation, and cache gps, lidar, depth data
+
   if (!lastOptimisedState_.id.isInitialised()) {
     // initial state
     if (parameters_.imu.use) {
@@ -575,6 +598,7 @@ bool ThreadedSlam::processFrame() {
         }
       }
     }
+    // check if enough keypoints for initialisation
     if(!frontend_.isInitialized() && multiFrame->numKeypoints() < 15) {
       LOG(WARNING) << "Not enough keypoints (" << multiFrame->numKeypoints()
                    << ") -- cannot initialise yet.";
@@ -589,6 +613,7 @@ bool ThreadedSlam::processFrame() {
     // propagate to have a sensible pose estimate (as needed for detection)
     if (parameters_.imu.use) {
       // NOTE: we are not allowed to access the Estimator object here, as optimisation might run.
+      // ToDo: so actually we propagate from older lastOptimisedState_, which is not ideal.  
       T_WS = lastOptimisedState_.T_WS;
       kinematics::Transformation T_WS_prev = T_WS;
       speedAndBias.head<3>() = lastOptimisedState_.v_W;
@@ -643,6 +668,9 @@ bool ThreadedSlam::processFrame() {
   std::vector<okvis::CameraMeasurement> frames;
   cameraMeasurementsReceived_.PopBlocking(&frames);
 
+
+  ///////////////// frontend: keypoint detection and description //////////////////
+
   // detection
   if(!ranDetection) {
     TimerSwitchable detectTimer("1 DetectAndDescribe");
@@ -678,6 +706,9 @@ bool ThreadedSlam::processFrame() {
     }
     detectTimer.stop();
   }
+
+
+  ///////////////// backend: wait for optimiser to finish /////////////////
 
   // IMPORTANT: the matcher needs the optimiser to be finished:
   if(optimisationThread_.joinable()) {
@@ -726,17 +757,23 @@ bool ThreadedSlam::processFrame() {
     }
   }
 
+
+  ///////////////// backend: addStates, addSubmapAlignmentConstraints(lidar/depth map to frame factors) to estimator //////////////////
+
   // start the matching
   Time matchingStart = Time::now();
   TimerSwitchable matchTimer("2 Match");
   bool asKeyframe = false;
 
+  /// add new state (parameter and residual blocks) to realtimeGraph_ and fullGraph_
   if (!estimator_.addStates(multiFrame, imuMeasurementDeque_, asKeyframe)) {
     LOG(ERROR)<< "Failed to add state! will drop multiframe.";
     matchTimer.stop();
     return true;
   }
-  else{
+
+  /// add live depth/lidar measurements as map-to-frame factors 
+  else{ // odd "else", these two parts are unrelated, leading to misunderstandings
 
     // Also add Lidar Measurements as Live Factors; doing it here before the dataAssociationAndInitialization
     // ensures that we can add the factors before the first optimization
@@ -817,6 +854,8 @@ bool ThreadedSlam::processFrame() {
       lidarKeyframes_.insert(StateId(multiFrame->id()));
     }
   }
+
+  ////////////////// frontend and estimator: dataAssociationAndInitialization and setKeyframe //////////////////
 
   // call the matcher
   if(!frontend_.dataAssociationAndInitialization(

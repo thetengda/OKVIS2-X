@@ -38,7 +38,7 @@ double sinc(double x);
 /// \return The corresponding Quaternion.
 Eigen::Quaterniond deltaQ(const Eigen::Vector3d& dAlpha);
 
-/// \brief Right Jacobian, see Forster et al. RSS 2015 eqn. (8)
+/// \brief Right Jacobian of SO(3) eg. d Exp(theta) / d theta, see Forster et al. RSS 2015 eqn. (8)
 Eigen::Matrix3d rightJacobian(const Eigen::Vector3d & PhiVec);
 
 /// \brief A class that does homogeneous Transformations.

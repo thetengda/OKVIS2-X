@@ -767,6 +767,7 @@ bool Frontend::dataAssociationAndInitialization(
       }
       if(!rotationOnly || num3dMatches>5) {
         if(!isInitialized_) {
+          // frontend is initialized here
           isInitialized_ = true;
           LOG(INFO) << "Initialized!";
         }
@@ -788,6 +789,9 @@ bool Frontend::dataAssociationAndInitialization(
   }
 
   // prepare features for place recognition
+  // features: (n x 48)
+  // index by camera.keypoints (cam0.kp0, cam0.kp1,... cam1.kp0, cam1.kp1,...)
+  // descriptor size is 48 bytes for BRISK
   std::vector<std::vector<uchar>> features(framesInOut->numKeypoints());
   // first, we are trying to match the database for loop closures
   int offset = 0;
@@ -802,11 +806,17 @@ bool Frontend::dataAssociationAndInitialization(
   }
 
   /*MULTI-SESSION AND MULTI-AGENT*/
+  // condition: if no loop closure is currently going on, and no background loop closure has finished (results available),
+  //    needsFullGraphOptimisation: loop closure frame or gps alignment frame added, but not yet optimised
+  // here is just place recognition from external sessions/agents
+  // componentDBows_ is loaded from external dbow files (old sessions or other agents)
   if (!estimator.isLoopClosing() && !estimator.isLoopClosureAvailable()
       && !estimator.needsFullGraphOptimisation() && isInitialized_) {
     for (uint64_t c = 0; c < componentDBows_.size(); ++c) {
       TimerSwitchable matchDBoWTimer0("2.3.0 multi-session and multi-agent place recognition");
+      // get place recognition candidates
       std::vector<std::pair<StateId, double>> stateIds;
+      // match current frame features to component c
       getFilteredDBoWResult(componentDBows_.at(c), features, stateIds);
       matchDBoWTimer0.stop();
 
@@ -847,6 +857,9 @@ bool Frontend::dataAssociationAndInitialization(
   }
 
   /*LOOP CLOSURES*/
+  // condition: loop closures enabled, no loop closure going on, no loop closure results available,
+  //    no full graph optimisation needed (loop closure frame / gps alignment frame added but not yet optimised)
+  //    frontend is initialized
   if(params.estimator.do_loop_closures && !estimator.isLoopClosing()
       && !estimator.isLoopClosureAvailable()
       && !estimator.needsFullGraphOptimisation() && isInitialized_) {
@@ -1287,6 +1300,16 @@ int Frontend::matchToMap(Estimator &estimator, const okvis::ViParameters& params
                          const uint64_t currentFrameId,
                          const std::set<LandmarkId>* loopClosureLandmarksToUseExclusively) {
 
+  // 1. travel through all landmarks, project into current frame, visible and score check
+  // 2. match initialized keypoints
+  // 3. addObservation 
+  // 4. RANSAC 3D-2D if reprojection error threshold exceeded
+  // 5. optimiseRealtimeGraph, removeOutliers and optimiseRealtimeGraph
+  // 6. match non-initialized keypoints and triangulate
+  // 7. addObservation
+  // 8. mergeLandmark if loop closure matching
+  // 9. sencond RANSAC 3D-2D and optimiseRealtimeGraph if first one failed
+
   if (estimator.numFrames() < 2) {
     // just starting, so yes, we need this as a new keyframe
     return 0;
@@ -1300,6 +1323,7 @@ int Frontend::matchToMap(Estimator &estimator, const okvis::ViParameters& params
   std::vector<LandmarkId> oldIds, newIds;
 
   // store the map to be matched
+  // index by camera index, and then landmark id
   std::vector<AlignedMap<LandmarkId, LandmarkToMatch>>
       landmarksToMatchVec(params.nCameraSystem.numCameras());
 
@@ -1465,6 +1489,8 @@ int Frontend::matchToMap(Estimator &estimator, const okvis::ViParameters& params
       landmarkToMatch.e_W.conservativeResize(3,o + 1);
       landmarkToMatch.r_W.conservativeResize(3,o + 1);
       dataPtr += (o + 1)*48;
+      
+      // best n candidates stored in landmarkToMatch
 
       if(landmarkToMatch.descriptors.rows==0) {
         // no observations -- weird.
@@ -1492,6 +1518,7 @@ int Frontend::matchToMap(Estimator &estimator, const okvis::ViParameters& params
 
     std::vector<std::thread*> threads(num_matching_threads, nullptr);
     for(size_t t = 0; t<num_matching_threads; ++t) {
+      // matching landmark and keypoint by Hamming distance
       threads[t] = new std::thread(
           &Frontend::matchToMapByThread<CAMERA_GEOMETRY>, this, t, num_matching_threads,
               std::cref(estimator), std::cref(params), currentFrameId,
@@ -1500,6 +1527,7 @@ int Frontend::matchToMap(Estimator &estimator, const okvis::ViParameters& params
               std::cref(pointMap), im, std::cref(multiFrame), std::ref(distances),
               std::ref(lmIds), std::ref(hps_W), std::ref(ctrs), std::ref(reprErrors));
     }
+    // matched landmarks now in lmIds, distances
 
     for(size_t t = 0; t<num_matching_threads; ++t) {
       threads[t]->join();
@@ -1940,12 +1968,20 @@ struct MatchInfo {
 template <class CAMERA_GEOMETRY>
 int Frontend::matchMotionStereo(Estimator& estimator, const ViParameters &params,
                                  const uint64_t currentFrameId, bool& rotationOnly) {
+  
+  // 1. find candidate frames by overlap
+  // 2. match keypoints
+  //    triangulate
+  // 3. estimator.addObservation
+  // 4. runRansac2d2d
+  
   int retCtr = 0;
   rotationOnly = true;
 
   kinematics::Transformation T_WS1 = estimator.pose(StateId(currentFrameId));
 
   // find close frames
+  // (only keyframes)
   TimerSwitchable matchMotionStereoTimer2("2.02.1 match motion stereo: prepare");
   std::set<StateId> allFrames;
   allFrames.insert(estimator.keyFrames().begin(), estimator.keyFrames().end());
@@ -1955,6 +1991,7 @@ int Frontend::matchMotionStereo(Estimator& estimator, const ViParameters &params
       allFrames.erase(id);
     }
   }
+  // compute overlaps
   StateId previousFrameId = estimator.stateIdByAge(1);
   std::vector<std::pair<double, StateId>> overlaps;
   for(auto & id : allFrames) {

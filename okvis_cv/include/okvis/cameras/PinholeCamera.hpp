@@ -171,10 +171,10 @@ class PinholeCamera : public PinholeCameraBase
   /// \brief overwrite undistortion map - use with caution !
   /// \param map1 Rectification map for horizontal direction
   /// \param map2 Rectification map for vertical direction
-  virtual void setRectifyMap(const cv::Mat & map1, const cv::Mat & map2);
+  virtual void setRectifyMap(const cv::Mat & map1, const cv::Mat & map2) override final;
   
   /// \brief get rectification map
-  virtual void getRectifyMap(cv::Mat & map1, cv::Mat & map2) const;
+  virtual void getRectifyMap(cv::Mat & map1, cv::Mat & map2) const override final;
 
   /// \brief Get the total number of intrinsics.
   /// \return Number of intrinsics parameters.

@@ -521,6 +521,7 @@ private:
   /// \brief Hacky: remember which CNNs are running on what frame.
   std::map<StateId,std::vector<std::thread*>> cnnThreads_;
 
+  /// \brief Loaded other components.( for place recognition and re-localization in multi-session/multi-agent case )
   AlignedVector<Component> components_; ///< Loaded other components.
   std::vector<std::unique_ptr<DBoW>> componentDBows_; ///< Corresponding DBoWs for place recogn.
   std::vector<bool> componentsFixed_; ///< Which ones of the other comp's are to be treated fixed.

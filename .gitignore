@@ -5,3 +5,5 @@
 *.png
 *.asv
 /documentation
+.cache/*
+*.pt

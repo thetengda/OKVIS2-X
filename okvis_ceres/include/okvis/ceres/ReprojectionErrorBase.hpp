@@ -99,16 +99,16 @@ class ReprojectionError2dBase_ : public ReprojectionErrorBase_<T...> {
 /// \brief The reprojection error base type.
 typedef ReprojectionErrorBase_<
 2 /* number of residuals */,
-7 /* size of first parameter */,
-4 /* size of second parameter */,
+7 /* size of first parameter (camera pose) */,
+4 /* size of second parameter (landmark position) */,
 7 /* size of third parameter (camera extrinsics) */>
 ReprojectionErrorBase;
 
 /// \brief The 2D reprojection error base type.
 typedef ReprojectionError2dBase_<
 2 /* number of residuals */,
-7 /* size of first parameter */,
-4 /* size of second parameter */,
+7 /* size of first parameter (camera pose) */,
+4 /* size of second parameter (landmark position) */,
 7 /* size of third parameter (camera extrinsics) */>
 ReprojectionError2dBase;
 

@@ -63,6 +63,8 @@ int main(int argc, char **argv)
   const bool isLidar = !isDepth;
   const bool isSubmapping = parameters.output.enable_submapping;
 
+  // lidar or depth data could be enabled only if submapping is enabled
+
   // dataset reader
   std::string path(argv[3]);
   std::shared_ptr<okvis::XDatasetReader> datasetReader;
@@ -128,6 +130,10 @@ int main(int argc, char **argv)
   std::shared_ptr<okvis::TrajectoryOutput> writer;
   writer.reset(new okvis::TrajectoryOutput(savePath+"/okvis2-" + mode + "_trajectory.csv", false, parameters.output.display_topview));
 
+  /// callbacks ///
+  // imu, images, gps callbacks are link to the estimator
+  // lidar/depth callbacks are linked to estimator, and submapping interface if isSubmapping
+  
   if (isSubmapping) {
     // Set callbacks in the estimator
     estimator->setOptimisedGraphCallback([&] (const okvis::State& _1, const okvis::TrackingState& _2,
@@ -211,6 +217,10 @@ int main(int argc, char **argv)
   }
 
   // Start streaming
+  // 1. load all data filenames
+  // 2. start streaming thread XDatasetReader::processing()
+  //    2.1 steam images, imu, gps, lidar, depth data according to timestamps
+  //    2.2 call the respective callbacks that were set before
   if(!datasetReader->startStreaming()) {
       LOG(ERROR) << "Failure with datasetReader streaming.";
       return EXIT_FAILURE;
@@ -221,9 +231,12 @@ int main(int argc, char **argv)
 
   int progress = 0;
   bool datasetreaderFinished = false;
+  // here we go all the way until datasetReader is finished
   while(true){
 
-      if(!datasetreaderFinished){
+      // realtime slam
+      if(!datasetreaderFinished){ 
+          /// main processing
           estimator->processFrame();
           std::map<std::string, cv::Mat> images;
           estimator->display(images);
@@ -247,7 +260,8 @@ int main(int argc, char **argv)
       }
 
       // check if done
-      if(!datasetReader->isStreaming()) {
+      // final full BA
+      if(!datasetReader->isStreaming()) { 
           datasetreaderFinished = true;
           std::cout << "\r DatasetReader Finished!" << std::endl;
 

@@ -20,6 +20,9 @@
 #ifndef MSTGRAPH_HPP
 #define MSTGRAPH_HPP
 
+#include <cstddef>
+
+#include <algorithm>
 #include <vector>
 
 namespace okvis {
@@ -126,7 +129,7 @@ struct MstGraph
 };
 
  /* Function to find MST using Kruskal's MST algorithm, returns weight of the MST*/
-int MstGraph::kruskalMst(std::vector<std::pair<int,int>> & edgesOut)
+inline int MstGraph::kruskalMst(std::vector<std::pair<int,int>> & edgesOut)
 {
     int mst_wt = 0; // Initialize result
 

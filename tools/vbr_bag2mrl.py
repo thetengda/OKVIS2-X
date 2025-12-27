@@ -1,4 +1,4 @@
-from ouster.sdk import client
+# from ouster.sdk import client
 import numpy as np
 import sys
 import os

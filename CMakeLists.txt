@@ -15,17 +15,19 @@ option (BUILD_TESTS
 option (BUILD_ROS2
         "Builds ros2 wrapper" ON)
 option (HAVE_LIBREALSENSE
-        "Use realsense as part of okvis" ON)
+        "Use realsense as part of okvis" OFF)
 option (USE_NN
         "Use keypoint classification as part of okvis, requires torch" ON)
 option (USE_GPU
-        "Use keypoint classification with GPU inference, requires torch with Cuda" OFF)
+        "Use keypoint classification with GPU inference, requires torch with Cuda" ON)
 option (DO_TIMING
         "Enable timing" ON)
 option (BUILD_SHARED_LIBS
         "Whether to build okvis as a shared library" OFF)
 
 option (USE_COLIDMAP "Whether to build okvis supportin colour and object's id 'for language based OKVIS' or regular one" ON)
+
+set(GPU_RUNTIME "HIP")
 
 set(OKVIS_CXX_STANDARD 17)
 set(OKVIS_PUBLIC_CXX_FLAGS)
@@ -57,10 +59,13 @@ if(USE_NN AND USE_GPU)
   if(APPLE)
     # MPS enabled by default
     add_compile_definitions(OKVIS_USE_MPS)
-  else()
+  elseif( GPU_RUNTIME STREQUAL "CUDA")
     # If CUDA isn't enabled explicitly here it's not detected correctly by Torch.
     enable_language(CUDA)
     add_compile_definitions(OKVIS_USE_CUDA)
+  elseif( GPU_RUNTIME STREQUAL "HIP")
+    enable_language(HIP)
+    add_compile_definitions(OKVIS_USE_HIP)
   endif()
 endif()
 
